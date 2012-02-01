@@ -115,7 +115,14 @@ namespace LibGit2Sharp
         /// </value>
         public virtual bool IsCurrentRepositoryHead
         {
-            get { return repo.Refs[CanonicalName].ResolveToDirectReference() == repo.Refs["HEAD"].ResolveToDirectReference(); }
+            get {
+                var head = repo.Refs["HEAD"];
+                // detached HEAD means no automatically
+                if (head is DirectReference)
+                    return false;
+
+                return head.TargetIdentifier == CanonicalName;
+            }
         }
 
         /// <summary>

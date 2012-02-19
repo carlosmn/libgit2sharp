@@ -188,6 +188,9 @@ namespace LibGit2Sharp.Core
         public static extern int git_index_write(IndexSafeHandle index);
 
         [DllImport(libgit2)]
+        public static extern int git_index_clear(IndexSafeHandle index);
+
+        [DllImport(libgit2)]
         public static extern IntPtr git_lasterror();
 
         [DllImport(libgit2)]

@@ -364,6 +364,14 @@ namespace LibGit2Sharp
             UpdatePhysicalIndex();
         }
 
+        public void Clear()
+        {
+            NativeMethods.git_index_clear(handle);
+            Count = 0;
+
+            UpdatePhysicalIndex();
+        }
+
         private IDictionary<string, FileStatus> PrepareBatch(IEnumerable<string> paths)
         {
             IDictionary<string, FileStatus> dic = new Dictionary<string, FileStatus>();

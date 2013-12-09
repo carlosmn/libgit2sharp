@@ -161,4 +161,15 @@ namespace LibGit2Sharp
             }
         }
     }
+
+    public class MemoryRemote : Remote
+    {
+        MemoryRemote(Repository repository, string url, string refspec)
+        {
+            this.repository = repository;
+            Url = url;
+            Name = String.Empty;
+            Handle = Proxy.git_remote_create_inmemory(repository.Handle, url, refspec);
+        }
+    }
 }

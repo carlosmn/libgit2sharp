@@ -97,11 +97,8 @@ namespace LibGit2Sharp
         /// <returns>The transformed reference.</returns>
         internal string FetchSpecTransformToSource(string reference)
         {
-            using (RemoteSafeHandle remoteHandle = Proxy.git_remote_load(repository.Handle, Name, true))
-            {
-                GitRefSpecHandle fetchSpecPtr = Proxy.git_remote_get_refspec(remoteHandle, 0);
-                return Proxy.git_refspec_rtransform(fetchSpecPtr, reference);
-            }
+            GitRefSpecHandle fetchSpecPtr = Proxy.git_remote_get_refspec(Handle, 0);
+            return Proxy.git_refspec_rtransform(fetchSpecPtr, reference);
         }
 
         /// <summary>

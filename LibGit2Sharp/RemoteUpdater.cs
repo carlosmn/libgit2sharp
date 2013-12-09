@@ -36,36 +36,24 @@ namespace LibGit2Sharp
 
         private IEnumerable<string> GetFetchRefSpecs()
         {
-            using (RemoteSafeHandle remoteHandle = Proxy.git_remote_load(repo.Handle, remote.Name, true))
-            {
-                return Proxy.git_remote_get_fetch_refspecs(remoteHandle);
-            }
+            return Proxy.git_remote_get_fetch_refspecs(remote.Handle);
         }
 
         private void SetFetchRefSpecs(IEnumerable<string> value)
         {
-            using (RemoteSafeHandle remoteHandle = Proxy.git_remote_load(repo.Handle, remote.Name, true))
-            {
-                Proxy.git_remote_set_fetch_refspecs(remoteHandle, value);
-                Proxy.git_remote_save(remoteHandle);
-            }
+            Proxy.git_remote_set_fetch_refspecs(remote.Handle, value);
+            Proxy.git_remote_save(remote.Handle);
         }
 
         private IEnumerable<string> GetPushRefSpecs()
         {
-            using (RemoteSafeHandle remoteHandle = Proxy.git_remote_load(repo.Handle, remote.Name, true))
-            {
-                return Proxy.git_remote_get_push_refspecs(remoteHandle);
-            }
+            return Proxy.git_remote_get_push_refspecs(remote.Handle);
         }
 
         private void SetPushRefSpecs(IEnumerable<string> value)
         {
-            using (RemoteSafeHandle remoteHandle = Proxy.git_remote_load(repo.Handle, remote.Name, true))
-            {
-                Proxy.git_remote_set_push_refspecs(remoteHandle, value);
-                Proxy.git_remote_save(remoteHandle);
-            }
+            Proxy.git_remote_set_push_refspecs(remote.Handle, value);
+            Proxy.git_remote_save(remote.Handle);
         }
 
         /// <summary>
@@ -75,11 +63,8 @@ namespace LibGit2Sharp
         {
             set
             {
-                using (RemoteSafeHandle remoteHandle = Proxy.git_remote_load(repo.Handle, remote.Name, true))
-                {
-                    Proxy.git_remote_set_autotag(remoteHandle, value);
-                    Proxy.git_remote_save(remoteHandle);
-                }
+                Proxy.git_remote_set_autotag(remote.Handle, value);
+                Proxy.git_remote_save(remote.Handle);
             }
         }
 

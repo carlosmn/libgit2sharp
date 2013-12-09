@@ -67,11 +67,8 @@ namespace LibGit2Sharp
         {
             Ensure.ArgumentNotNull(remote, "remote");
 
-            using (RemoteSafeHandle remoteHandle = Proxy.git_remote_load(repository.Handle, remote.Name, true))
-            {
-                Proxy.git_remote_connect(remoteHandle, GitDirection.Fetch);
-                return Proxy.git_remote_ls(repository, remoteHandle);
-            }
+            Proxy.git_remote_connect(remote.Handle, GitDirection.Fetch);
+            return Proxy.git_remote_ls(repository, remote.Handle);
         }
 
         /// <summary>
@@ -94,36 +91,34 @@ namespace LibGit2Sharp
         {
             Ensure.ArgumentNotNull(remote, "remote");
 
-            using (RemoteSafeHandle remoteHandle = Proxy.git_remote_load(repository.Handle, remote.Name, true))
+            var remoteHandle = remote.Handle;
+            var callbacks = new RemoteCallbacks(onProgress, onTransferProgress, onUpdateTips, credentials);
+            GitRemoteCallbacks gitCallbacks = callbacks.GenerateCallbacks();
+
+            if (tagFetchMode.HasValue)
             {
-                var callbacks = new RemoteCallbacks(onProgress, onTransferProgress, onUpdateTips, credentials);
-                GitRemoteCallbacks gitCallbacks = callbacks.GenerateCallbacks();
+                Proxy.git_remote_set_autotag(remoteHandle, tagFetchMode.Value);
+            }
 
-                if (tagFetchMode.HasValue)
-                {
-                    Proxy.git_remote_set_autotag(remoteHandle, tagFetchMode.Value);
-                }
+            // It is OK to pass the reference to the GitCallbacks directly here because libgit2 makes a copy of
+            // the data in the git_remote_callbacks structure. If, in the future, libgit2 changes its implementation
+            // to store a reference to the git_remote_callbacks structure this would introduce a subtle bug
+            // where the managed layer could move the git_remote_callbacks to a different location in memory,
+            // but libgit2 would still reference the old address.
+            //
+            // Also, if GitRemoteCallbacks were a class instead of a struct, we would need to guard against
+            // GC occuring in between setting the remote callbacks and actual usage in one of the functions afterwords.
+            Proxy.git_remote_set_callbacks(remoteHandle, ref gitCallbacks);
 
-                // It is OK to pass the reference to the GitCallbacks directly here because libgit2 makes a copy of
-                // the data in the git_remote_callbacks structure. If, in the future, libgit2 changes its implementation
-                // to store a reference to the git_remote_callbacks structure this would introduce a subtle bug
-                // where the managed layer could move the git_remote_callbacks to a different location in memory,
-                // but libgit2 would still reference the old address.
-                //
-                // Also, if GitRemoteCallbacks were a class instead of a struct, we would need to guard against
-                // GC occuring in between setting the remote callbacks and actual usage in one of the functions afterwords.
-                Proxy.git_remote_set_callbacks(remoteHandle, ref gitCallbacks);
-
-                try
-                {
-                    Proxy.git_remote_connect(remoteHandle, GitDirection.Fetch);
-                    Proxy.git_remote_download(remoteHandle);
-                    Proxy.git_remote_update_tips(remoteHandle);
-                }
-                finally
-                {
-                    Proxy.git_remote_disconnect(remoteHandle);
-                }
+            try
+            {
+                Proxy.git_remote_connect(remoteHandle, GitDirection.Fetch);
+                Proxy.git_remote_download(remoteHandle);
+                Proxy.git_remote_update_tips(remoteHandle);
+            }
+            finally
+            {
+                Proxy.git_remote_disconnect(remoteHandle);
             }
         }
 
@@ -200,57 +195,53 @@ namespace LibGit2Sharp
 
             PushCallbacks pushStatusUpdates = new PushCallbacks(pushOptions.OnPushStatusError);
 
-            // Load the remote.
-            using (RemoteSafeHandle remoteHandle = Proxy.git_remote_load(repository.Handle, remote.Name, true))
+            var callbacks = new RemoteCallbacks(null, null, null, pushOptions.Credentials);
+            GitRemoteCallbacks gitCallbacks = callbacks.GenerateCallbacks();
+            Proxy.git_remote_set_callbacks(remote.Handle, ref gitCallbacks);
+
+            try
             {
-                var callbacks = new RemoteCallbacks(null, null, null, pushOptions.Credentials);
-                GitRemoteCallbacks gitCallbacks = callbacks.GenerateCallbacks();
-                Proxy.git_remote_set_callbacks(remoteHandle, ref gitCallbacks);
+                Proxy.git_remote_connect(remote.Handle, GitDirection.Push);
 
-                try
+                // Perform the actual push.
+                using (PushSafeHandle pushHandle = Proxy.git_push_new(remote.Handle))
                 {
-                    Proxy.git_remote_connect(remoteHandle, GitDirection.Push);
+                    pushTransferCallbacks = new PushTransferCallbacks(pushOptions.OnPushTransferProgress);
+                    packBuilderCallbacks = new PackbuilderCallbacks(pushOptions.OnPackBuilderProgress);
 
-                    // Perform the actual push.
-                    using (PushSafeHandle pushHandle = Proxy.git_push_new(remoteHandle))
+                    pushProgress = pushTransferCallbacks.GenerateCallback();
+                    packBuilderProgress = packBuilderCallbacks.GenerateCallback();
+
+                    Proxy.git_push_set_callbacks(pushHandle, pushProgress, packBuilderProgress);
+
+                    // Set push options.
+                    Proxy.git_push_set_options(pushHandle,
+                        new GitPushOptions()
+                        {
+                            PackbuilderDegreeOfParallelism = pushOptions.PackbuilderDegreeOfParallelism
+                        });
+
+                    // Add refspecs.
+                    foreach (string pushRefSpec in pushRefSpecs)
                     {
-                        pushTransferCallbacks = new PushTransferCallbacks(pushOptions.OnPushTransferProgress);
-                        packBuilderCallbacks = new PackbuilderCallbacks(pushOptions.OnPackBuilderProgress);
-
-                        pushProgress = pushTransferCallbacks.GenerateCallback();
-                        packBuilderProgress = packBuilderCallbacks.GenerateCallback();
-
-                        Proxy.git_push_set_callbacks(pushHandle, pushProgress, packBuilderProgress);
-
-                        // Set push options.
-                        Proxy.git_push_set_options(pushHandle,
-                            new GitPushOptions()
-                            {
-                                PackbuilderDegreeOfParallelism = pushOptions.PackbuilderDegreeOfParallelism
-                            });
-
-                        // Add refspecs.
-                        foreach (string pushRefSpec in pushRefSpecs)
-                        {
-                            Proxy.git_push_add_refspec(pushHandle, pushRefSpec);
-                        }
-
-                        Proxy.git_push_finish(pushHandle);
-
-                        if (!Proxy.git_push_unpack_ok(pushHandle))
-                        {
-                            throw new LibGit2SharpException("Push failed - remote did not successfully unpack.");
-                        }
-
-                        Proxy.git_push_status_foreach(pushHandle, pushStatusUpdates.Callback);
-
-                        Proxy.git_push_update_tips(pushHandle);
+                        Proxy.git_push_add_refspec(pushHandle, pushRefSpec);
                     }
+
+                    Proxy.git_push_finish(pushHandle);
+
+                    if (!Proxy.git_push_unpack_ok(pushHandle))
+                    {
+                        throw new LibGit2SharpException("Push failed - remote did not successfully unpack.");
+                    }
+
+                    Proxy.git_push_status_foreach(pushHandle, pushStatusUpdates.Callback);
+
+                    Proxy.git_push_update_tips(pushHandle);
                 }
-                finally
-                {
-                    Proxy.git_remote_disconnect(remoteHandle);
-                }
+            }
+            finally
+            {
+                Proxy.git_remote_disconnect(remote.Handle);
             }
 
             GC.KeepAlive(pushProgress);

@@ -12,12 +12,13 @@ namespace LibGit2Sharp
     /// A remote repository whose branches are tracked.
     /// </summary>
     [DebuggerDisplay("{DebuggerDisplay,nq}")]
-    public class Remote : IEquatable<Remote>
+    public class Remote : IEquatable<Remote>, IDisposable
     {
         private static readonly LambdaEqualityHelper<Remote> equalityHelper =
             new LambdaEqualityHelper<Remote>(x => x.Name, x => x.Url);
 
         internal readonly Repository repository;
+        internal RemoteSafeHandle Handle { get; private set; }
 
         private readonly RefSpecCollection refSpecs;
 
@@ -27,24 +28,28 @@ namespace LibGit2Sharp
         protected Remote()
         { }
 
-        private Remote(Repository repository, string name, string url, TagFetchMode tagFetchMode)
+        private Remote(RemoteSafeHandle handle, Repository repository)
         {
+            Handle = handle;
             this.repository = repository;
-            Name = name;
-            Url = url;
-            TagFetchMode = tagFetchMode;
+            Name = Proxy.git_remote_name(handle);
+            Url = Proxy.git_remote_url(handle);
+            TagFetchMode = Proxy.git_remote_autotag(handle);
             refSpecs = new RefSpecCollection(this);
+
         }
 
         internal static Remote BuildFromPtr(RemoteSafeHandle handle, Repository repo)
         {
-            string name = Proxy.git_remote_name(handle);
-            string url = Proxy.git_remote_url(handle);
-            TagFetchMode tagFetchMode = Proxy.git_remote_autotag(handle);
-
-            var remote = new Remote(repo, name, url, tagFetchMode);
+            var remote = new Remote(handle, repo);
 
             return remote;
+        }
+
+        public void Dispose()
+        {
+            Handle.SafeDispose();
+            GC.SuppressFinalize(this);
         }
 
         /// <summary>

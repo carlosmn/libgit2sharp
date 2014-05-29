@@ -154,7 +154,7 @@ namespace LibGit2Sharp
         /// <param name="hintpath">The hintpath is used to determine what git filters should be applied to the object before it can be placed to the object database.</param>
         /// <param name="numberOfBytesToConsume">The number of bytes to consume from the stream.</param>
         /// <returns>The created <see cref="Blob"/>.</returns>
-        public virtual Blob CreateBlob(Stream stream, string hintpath = null, int? numberOfBytesToConsume = null)
+        public virtual Blob CreateBlobOld(Stream stream, string hintpath = null, int? numberOfBytesToConsume = null)
         {
             Ensure.ArgumentNotNull(stream, "stream");
 
@@ -165,6 +165,28 @@ namespace LibGit2Sharp
 
             var proc = new Processor(stream, numberOfBytesToConsume);
             ObjectId id = Proxy.git_blob_create_fromchunks(repo.Handle, hintpath, proc.Provider);
+
+            return repo.Lookup<Blob>(id);
+        }
+
+        public virtual Blob CreateBlob(Stream stream, string hintpath = null, int? numberOfBytesToConsume = null)
+        {
+            Ensure.ArgumentNotNull(stream, "stream");
+
+            if (!stream.CanRead)
+            {
+                throw new ArgumentException("The stream cannot be read from.", "stream");
+            }
+
+            var odbStream = Proxy.git_odb_open_wstream(handle, (UIntPtr) stream.Length, GitObjectType.Blob);
+            var buffer = new byte[4 * 1024];
+            int read;
+            while ((read = stream.Read(buffer, 0, buffer.Length)) != 0) {
+                Proxy.git_odb_stream_write(odbStream, buffer, read);
+            }
+
+            var id = Proxy.git_odb_stream_finalize_write(odbStream);
+            odbStream.SafeDispose();
 
             return repo.Lookup<Blob>(id);
         }

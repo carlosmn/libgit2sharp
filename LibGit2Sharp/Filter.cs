@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -85,10 +86,9 @@ namespace LibGit2Sharp
         /// <param name="path">The path of the file being filtered</param>
         /// <param name="root">The path of the working directory for the owning repository</param>
         /// <param name="output">Output to the downstream filter or output writer</param>
-        /// <returns></returns>
-        protected virtual int Complete(string path, string root, Stream output)
+        protected virtual void Complete(string path, string root, Stream output)
         {
-            return 0;
+
         }
 
         /// <summary>
@@ -102,9 +102,9 @@ namespace LibGit2Sharp
         /// initialization operations (in case the library is being used in a way
         /// that doesn't need the filter.
         /// </summary>
-        protected virtual int Initialize()
+        protected virtual void Initialize()
         {
-            return 0;
+
         }
 
         /// <summary>
@@ -114,10 +114,9 @@ namespace LibGit2Sharp
         /// <param name="root">The path of the working directory for the owning repository</param>
         /// <param name="input">Input from the upstream filter or input reader</param>
         /// <param name="output">Output to the downstream filter or output writer</param>
-        /// <returns>0 if successful and <see cref="GitErrorCode.PassThrough"/> to skip and pass through</returns>
-        protected virtual int Clean(string path, string root, Stream input, Stream output)
+        protected virtual void Clean(string path, string root, Stream input, Stream output)
         {
-            return (int)GitErrorCode.PassThrough;
+            input.CopyTo(output);
         }
 
         /// <summary>
@@ -127,10 +126,9 @@ namespace LibGit2Sharp
         /// <param name="root">The path of the working directory for the owning repository</param>
         /// <param name="input">Input from the upstream filter or input reader</param>
         /// <param name="output">Output to the downstream filter or output writer</param>
-        /// <returns>0 if successful and <see cref="GitErrorCode.PassThrough"/> to skip and pass through</returns>
-        protected virtual int Smudge(string path, string root, Stream input, Stream output)
+        protected virtual void Smudge(string path, string root, Stream input, Stream output)
         {
-            return (int)GitErrorCode.PassThrough;
+            input.CopyTo(output);
         }
 
         /// <summary>
@@ -196,7 +194,19 @@ namespace LibGit2Sharp
         /// </summary>
         int InitializeCallback(IntPtr filterPointer)
         {
-            return Initialize();
+            int result = 0;
+            try
+            {
+                Initialize();
+            }
+            catch (Exception exception)
+            {
+                Trace.TraceError("Filter.InitializeCallback exception");
+                Trace.TraceError(exception.ToString());
+                Proxy.giterr_set_str(GitErrorCategory.Filter, exception);
+                result = (int)GitErrorCode.Error;
+            }
+            return result;
         }
 
         int StreamCreateCallback(out IntPtr git_writestream_out, GitFilter self, IntPtr payload, IntPtr filterSourcePtr, IntPtr git_writestream_next)
@@ -228,7 +238,9 @@ namespace LibGit2Sharp
                     thisPtr = IntPtr.Zero;
                 }
 
-                Proxy.giterr_set_str(GitErrorCategory.Filter, exception.Message);
+                Trace.TraceError("Filter.StreamCreateCallback exception");
+                Trace.TraceError(exception.ToString());
+                Proxy.giterr_set_str(GitErrorCategory.Filter, exception);
                 result = (int)GitErrorCode.Error;
             }
 
@@ -246,13 +258,23 @@ namespace LibGit2Sharp
                 Ensure.ArgumentNotZeroIntPtr(stream, "stream");
                 Ensure.ArgumentIsExpectedIntPtr(stream, thisPtr, "stream");
 
-                result = nextStream.close(nextPtr);
+                using (MemoryStream output = new MemoryStream())
+                {
+                    Complete(filterSource.Path, filterSource.Root, output);
+
+                    output.Seek(0, SeekOrigin.Begin);
+                    WriteToNextFilter(output);
+                }
             }
             catch (Exception exception)
             {
-                Proxy.giterr_set_str(GitErrorCategory.Filter, exception.Message);
+                Trace.TraceError("Filter.StreamCloseCallback exception");
+                Trace.TraceError(exception.ToString());
+                Proxy.giterr_set_str(GitErrorCategory.Filter, exception);
                 result = (int)GitErrorCode.Error;
             }
+
+            result = nextStream.close(nextPtr);
 
             return result;
         }
@@ -266,7 +288,11 @@ namespace LibGit2Sharp
 
                 Marshal.FreeHGlobal(thisPtr);
             }
-            catch { }
+            catch (Exception exception)
+            {
+                Trace.TraceError("Filter.StreamFreeCallback exception");
+                Trace.TraceError(exception.ToString());
+            }
         }
 
         unsafe int StreamWriteCallback(IntPtr stream, IntPtr buffer, UIntPtr len)
@@ -282,25 +308,40 @@ namespace LibGit2Sharp
                 using (UnmanagedMemoryStream input = new UnmanagedMemoryStream((byte*)buffer.ToPointer(), (long)len))
                 using (MemoryStream output = new MemoryStream())
                 {
-
                     switch (filterSource.SourceMode)
                     {
                         case FilterMode.Clean:
-                            result = Clean(filterSource.Path, filterSource.Root, input, output);
+                            try
+                            {
+                                Clean(filterSource.Path, filterSource.Root, input, output);
+                            }
+                            catch (Exception exception)
+                            {
+                                Trace.TraceError("Filter.StreamWriteCallback exception");
+                                Trace.TraceError(exception.ToString());
+                                Proxy.giterr_set_str(GitErrorCategory.Filter, exception);
+                                result = (int)GitErrorCode.Error;
+                            }
                             break;
                         case FilterMode.Smudge:
-                            result = Smudge(filterSource.Path, filterSource.Root, input, output);
+                            try
+                            {
+                                Smudge(filterSource.Path, filterSource.Root, input, output);
+                            }
+                            catch (Exception exception)
+                            {
+                                Trace.TraceError("Filter.StreamWriteCallback exception");
+                                Trace.TraceError(exception.ToString());
+                                Proxy.giterr_set_str(GitErrorCategory.Filter, exception);
+                                result = (int)GitErrorCode.Error;
+                            }
                             break;
                         default:
                             Proxy.giterr_set_str(GitErrorCategory.Filter, "Unexpected filter mode.");
                             return (int)GitErrorCode.Ambiguous;
                     }
 
-                    if (result == (int)GitErrorCode.PassThrough)
-                    {
-                        input.CopyTo(output);
-                    }
-                    else if (result < 0)
+                    if (result != (int)GitErrorCode.Ok)
                     {
                         return result;
                     }
@@ -311,7 +352,9 @@ namespace LibGit2Sharp
             }
             catch (Exception exception)
             {
-                Proxy.giterr_set_str(GitErrorCategory.Filter, exception.Message);
+                Trace.TraceError("Filter.StreamWriteCallback exception");
+                Trace.TraceError(exception.ToString());
+                Proxy.giterr_set_str(GitErrorCategory.Filter, exception);
                 result = (int)GitErrorCode.Error;
             }
 
@@ -321,7 +364,10 @@ namespace LibGit2Sharp
         private unsafe int WriteToNextFilter(MemoryStream output)
         {
             // 64K is optimal buffer size per https://technet.microsoft.com/en-us/library/cc938632.aspx
-            const int BufferSize = 64 * 1024; 
+            const int BufferSize = 64 * 1024;
+
+            Debug.Assert(output != null, "output parameter is null");
+            Debug.Assert(output.CanWrite, "output.CanWrite parameter equals false");
 
             int result = 0;
             byte[] bytes = new byte[BufferSize];
@@ -332,7 +378,7 @@ namespace LibGit2Sharp
                 while ((read = output.Read(bytes, 0, bytes.Length)) > 0)
                 {
                     Marshal.Copy(bytes, 0, bytesPtr, read);
-                    if ((result = nextStream.write(nextPtr, bytesPtr, (UIntPtr)read)) < 0)
+                    if ((result = nextStream.write(nextPtr, bytesPtr, (UIntPtr)read)) != (int)GitErrorCode.Ok)
                     {
                         Proxy.giterr_set_str(GitErrorCategory.Filter, "Filter write to next stream failed");
                         break;

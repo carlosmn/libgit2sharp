@@ -911,11 +911,6 @@ namespace LibGit2Sharp.Core
             return (FilterMode)res;
         }
 
-        public static void git_filter_free(IntPtr gitFilter)
-        {
-            NativeMethods.git_filter_free(gitFilter);
-        }
-
         #endregion
 
         #region git_graph_

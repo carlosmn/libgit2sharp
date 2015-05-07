@@ -201,8 +201,8 @@ namespace LibGit2Sharp
             }
             catch (Exception exception)
             {
-                Trace.TraceError("Filter.InitializeCallback exception");
-                Trace.TraceError(exception.ToString());
+                Log.Write(LogLevel.Error, "Filter.InitializeCallback exception");
+                Log.Write(LogLevel.Error, exception.ToString());
                 Proxy.giterr_set_str(GitErrorCategory.Filter, exception);
                 result = (int)GitErrorCode.Error;
             }
@@ -238,8 +238,8 @@ namespace LibGit2Sharp
                     thisPtr = IntPtr.Zero;
                 }
 
-                Trace.TraceError("Filter.StreamCreateCallback exception");
-                Trace.TraceError(exception.ToString());
+                Log.Write(LogLevel.Error, "Filter.StreamCreateCallback exception");
+                Log.Write(LogLevel.Error, exception.ToString());
                 Proxy.giterr_set_str(GitErrorCategory.Filter, exception);
                 result = (int)GitErrorCode.Error;
             }
@@ -268,8 +268,8 @@ namespace LibGit2Sharp
             }
             catch (Exception exception)
             {
-                Trace.TraceError("Filter.StreamCloseCallback exception");
-                Trace.TraceError(exception.ToString());
+                Log.Write(LogLevel.Error, "Filter.StreamCloseCallback exception");
+                Log.Write(LogLevel.Error, exception.ToString());
                 Proxy.giterr_set_str(GitErrorCategory.Filter, exception);
                 result = (int)GitErrorCode.Error;
             }
@@ -290,8 +290,8 @@ namespace LibGit2Sharp
             }
             catch (Exception exception)
             {
-                Trace.TraceError("Filter.StreamFreeCallback exception");
-                Trace.TraceError(exception.ToString());
+                Log.Write(LogLevel.Error, "Filter.StreamFreeCallback exception");
+                Log.Write(LogLevel.Error, exception.ToString());
             }
         }
 
@@ -305,8 +305,14 @@ namespace LibGit2Sharp
                 Ensure.ArgumentNotZeroIntPtr(buffer, "buffer");
                 Ensure.ArgumentIsExpectedIntPtr(stream, thisPtr, "stream");
 
+                string tempFileName = Path.GetTempFileName();
                 using (UnmanagedMemoryStream input = new UnmanagedMemoryStream((byte*)buffer.ToPointer(), (long)len))
-                using (MemoryStream output = new MemoryStream())
+                // Setup a file system backed write-to stream to work with this gives the  runtime
+                // somewhere to put bits if the amount of data could cause an OOM scenario.
+                using (FileStream output = File.Open(tempFileName, FileMode.Open, FileAccess.Write, FileShare.ReadWrite))
+                // Setup a septerate read-from stream on the same file system backing
+                // a seperate stream helps avoid a flush to disk when reading the written content
+                using (FileStream reader = File.Open(tempFileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                 {
                     switch (filterSource.SourceMode)
                     {
@@ -317,12 +323,13 @@ namespace LibGit2Sharp
                             }
                             catch (Exception exception)
                             {
-                                Trace.TraceError("Filter.StreamWriteCallback exception");
-                                Trace.TraceError(exception.ToString());
+                                Log.Write(LogLevel.Error, "Filter.StreamWriteCallback exception");
+                                Log.Write(LogLevel.Error, exception.ToString());
                                 Proxy.giterr_set_str(GitErrorCategory.Filter, exception);
                                 result = (int)GitErrorCode.Error;
                             }
                             break;
+
                         case FilterMode.Smudge:
                             try
                             {
@@ -330,8 +337,8 @@ namespace LibGit2Sharp
                             }
                             catch (Exception exception)
                             {
-                                Trace.TraceError("Filter.StreamWriteCallback exception");
-                                Trace.TraceError(exception.ToString());
+                                Log.Write(LogLevel.Error, "Filter.StreamWriteCallback exception");
+                                Log.Write(LogLevel.Error, exception.ToString());
                                 Proxy.giterr_set_str(GitErrorCategory.Filter, exception);
                                 result = (int)GitErrorCode.Error;
                             }
@@ -341,19 +348,21 @@ namespace LibGit2Sharp
                             return (int)GitErrorCode.Ambiguous;
                     }
 
-                    if (result != (int)GitErrorCode.Ok)
+                    if (result == (int)GitErrorCode.Ok)
                     {
-                        return result;
+                        // have to flush the write-to stream to enable the read stream to get access to the bits
+                        output.Flush();
+                        result = WriteToNextFilter(reader);
                     }
-
-                    output.Seek(0, SeekOrigin.Begin);
-                    result = WriteToNextFilter(output);
                 }
+
+                // clean up after outselves
+                File.Delete(tempFileName);
             }
             catch (Exception exception)
             {
-                Trace.TraceError("Filter.StreamWriteCallback exception");
-                Trace.TraceError(exception.ToString());
+                Log.Write(LogLevel.Error, "Filter.StreamWriteCallback exception");
+                Log.Write(LogLevel.Error, exception.ToString());
                 Proxy.giterr_set_str(GitErrorCategory.Filter, exception);
                 result = (int)GitErrorCode.Error;
             }
@@ -361,13 +370,13 @@ namespace LibGit2Sharp
             return result;
         }
 
-        private unsafe int WriteToNextFilter(MemoryStream output)
+        private unsafe int WriteToNextFilter(Stream output)
         {
             // 64K is optimal buffer size per https://technet.microsoft.com/en-us/library/cc938632.aspx
             const int BufferSize = 64 * 1024;
 
             Debug.Assert(output != null, "output parameter is null");
-            Debug.Assert(output.CanWrite, "output.CanWrite parameter equals false");
+            Debug.Assert(output.CanRead, "output.CanRead parameter equals false");
 
             int result = 0;
             byte[] bytes = new byte[BufferSize];

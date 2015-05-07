@@ -510,9 +510,6 @@ namespace LibGit2Sharp.Core
         internal static extern int git_filter_source_mode(IntPtr source);
 
         [DllImport(libgit2)]
-        internal static extern void git_filter_free(IntPtr filterSafeHandle);
-
-        [DllImport(libgit2)]
         internal static extern int git_libgit2_features();
 
         [DllImport(libgit2)]

@@ -258,13 +258,20 @@ namespace LibGit2Sharp
                 Ensure.ArgumentNotZeroIntPtr(stream, "stream");
                 Ensure.ArgumentIsExpectedIntPtr(stream, thisPtr, "stream");
 
-                using (MemoryStream output = new MemoryStream())
+                string tempFileName = Path.GetTempFileName();
+                // Setup a file system backed write-to stream to work with this gives the  runtime
+                // somewhere to put bits if the amount of data could cause an OOM scenario.
+                using (FileStream output = File.Open(tempFileName, FileMode.Open, FileAccess.Write, FileShare.ReadWrite))
+                // Setup a septerate read-from stream on the same file system backing
+                // a seperate stream helps avoid a flush to disk when reading the written content
+                using (FileStream reader = File.Open(tempFileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                 {
                     Complete(filterSource.Path, filterSource.Root, output);
-
-                    output.Seek(0, SeekOrigin.Begin);
-                    WriteToNextFilter(output);
+                    output.Flush();
+                    WriteToNextFilter(reader);
                 }
+                // clean up after outselves
+                File.Delete(tempFileName);
             }
             catch (Exception exception)
             {

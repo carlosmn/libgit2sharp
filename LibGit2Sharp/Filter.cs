@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Pipes;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading.Tasks;
 using LibGit2Sharp.Core;
 
 namespace LibGit2Sharp
@@ -17,6 +19,8 @@ namespace LibGit2Sharp
     {
         private static readonly LambdaEqualityHelper<Filter> equalityHelper =
         new LambdaEqualityHelper<Filter>(x => x.Name, x => x.Attributes);
+        // 64K is optimal buffer size per https://technet.microsoft.com/en-us/library/cc938632.aspx
+        private const int BufferSize = 64 * 1024;
 
         private readonly string name;
         private readonly IEnumerable<FilterAttributeEntry> attributes;
@@ -259,16 +263,32 @@ namespace LibGit2Sharp
                 Ensure.ArgumentIsExpectedIntPtr(stream, thisPtr, "stream");
 
                 string tempFileName = Path.GetTempFileName();
-                // Setup a file system backed write-to stream to work with this gives the  runtime
-                // somewhere to put bits if the amount of data could cause an OOM scenario.
-                using (FileStream output = File.Open(tempFileName, FileMode.Open, FileAccess.Write, FileShare.ReadWrite))
-                // Setup a septerate read-from stream on the same file system backing
-                // a seperate stream helps avoid a flush to disk when reading the written content
-                using (FileStream reader = File.Open(tempFileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                // setup a server/client directional pipe to allow blocking reads and writes while minmizing memory consumption
+                // AnonymousPipe*Stream operate like stdout->stdin: block as long as the stream is open or until read buffer is filled
+                using (AnonymousPipeServerStream output = new AnonymousPipeServerStream(PipeDirection.Out, HandleInheritability.None, BufferSize))
+                using (AnonymousPipeClientStream reader = new AnonymousPipeClientStream(PipeDirection.In, output.ClientSafePipeHandle))
                 {
-                    Complete(filterSource.Path, filterSource.Root, output);
-                    output.Flush();
-                    WriteToNextFilter(reader);
+                    Task.Factory.StartNew(() =>
+                    {
+                        try
+                        {
+                            Complete(filterSource.Path, filterSource.Root, output);
+                        }
+                        catch (Exception exception)
+                        {
+                            Log.Write(LogLevel.Error, "Filter.StreamCloseCallback exception");
+                            Log.Write(LogLevel.Error, exception.ToString());
+                            Proxy.giterr_set_str(GitErrorCategory.Filter, exception);
+                            result = (int)GitErrorCode.Error;
+                        }
+                        finally
+                        {
+                            // close the server pipe as soon as it done to unblock empty reads
+                            output.Close();
+                        }
+                    });
+
+                    result = WriteToNextFilter(reader);
                 }
                 // clean up after outselves
                 File.Delete(tempFileName);
@@ -312,59 +332,64 @@ namespace LibGit2Sharp
                 Ensure.ArgumentNotZeroIntPtr(buffer, "buffer");
                 Ensure.ArgumentIsExpectedIntPtr(stream, thisPtr, "stream");
 
-                string tempFileName = Path.GetTempFileName();
                 using (UnmanagedMemoryStream input = new UnmanagedMemoryStream((byte*)buffer.ToPointer(), (long)len))
-                // Setup a file system backed write-to stream to work with this gives the  runtime
-                // somewhere to put bits if the amount of data could cause an OOM scenario.
-                using (FileStream output = File.Open(tempFileName, FileMode.Open, FileAccess.Write, FileShare.ReadWrite))
-                // Setup a septerate read-from stream on the same file system backing
-                // a seperate stream helps avoid a flush to disk when reading the written content
-                using (FileStream reader = File.Open(tempFileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                // setup a server/client directional pipe to allow blocking reads and writes while minmizing memory consumption
+                // AnonymousPipe*Stream operate like stdout->stdin: block as long as the stream is open or until read buffer is filled
+                using (AnonymousPipeServerStream output = new AnonymousPipeServerStream(PipeDirection.Out, HandleInheritability.None, BufferSize))
+                using (AnonymousPipeClientStream reader = new AnonymousPipeClientStream(PipeDirection.In, output.ClientSafePipeHandle))
                 {
                     switch (filterSource.SourceMode)
                     {
                         case FilterMode.Clean:
-                            try
+                            Task.Factory.StartNew(() =>
                             {
-                                Clean(filterSource.Path, filterSource.Root, input, output);
-                            }
-                            catch (Exception exception)
-                            {
-                                Log.Write(LogLevel.Error, "Filter.StreamWriteCallback exception");
-                                Log.Write(LogLevel.Error, exception.ToString());
-                                Proxy.giterr_set_str(GitErrorCategory.Filter, exception);
-                                result = (int)GitErrorCode.Error;
-                            }
+                                try
+                                {
+                                    Clean(filterSource.Path, filterSource.Root, input, output);
+                                }
+                                catch (Exception exception)
+                                {
+                                    Log.Write(LogLevel.Error, "Filter.StreamWriteCallback exception");
+                                    Log.Write(LogLevel.Error, exception.ToString());
+                                    Proxy.giterr_set_str(GitErrorCategory.Filter, exception);
+                                    result = (int)GitErrorCode.Error;
+                                }
+                                finally
+                                {
+                                    // close the server pipe as soon as it done to unblock empty reads
+                                    output.Close();
+                                }
+                            });
                             break;
 
                         case FilterMode.Smudge:
-                            try
+                            Task.Factory.StartNew(() =>
                             {
-                                Smudge(filterSource.Path, filterSource.Root, input, output);
-                            }
-                            catch (Exception exception)
-                            {
-                                Log.Write(LogLevel.Error, "Filter.StreamWriteCallback exception");
-                                Log.Write(LogLevel.Error, exception.ToString());
-                                Proxy.giterr_set_str(GitErrorCategory.Filter, exception);
-                                result = (int)GitErrorCode.Error;
-                            }
+                                try
+                                {
+                                    Smudge(filterSource.Path, filterSource.Root, input, output);
+                                }
+                                catch (Exception exception)
+                                {
+                                    Log.Write(LogLevel.Error, "Filter.StreamWriteCallback exception");
+                                    Log.Write(LogLevel.Error, exception.ToString());
+                                    Proxy.giterr_set_str(GitErrorCategory.Filter, exception);
+                                    result = (int)GitErrorCode.Error;
+                                }
+                                finally
+                                {
+                                    // close the server pipe as soon as it done to unblock empty reads
+                                    output.Close();
+                                }
+                            });
                             break;
                         default:
                             Proxy.giterr_set_str(GitErrorCategory.Filter, "Unexpected filter mode.");
                             return (int)GitErrorCode.Ambiguous;
                     }
 
-                    if (result == (int)GitErrorCode.Ok)
-                    {
-                        // have to flush the write-to stream to enable the read stream to get access to the bits
-                        output.Flush();
-                        result = WriteToNextFilter(reader);
-                    }
+                    result = WriteToNextFilter(reader);
                 }
-
-                // clean up after outselves
-                File.Delete(tempFileName);
             }
             catch (Exception exception)
             {
@@ -379,9 +404,6 @@ namespace LibGit2Sharp
 
         private unsafe int WriteToNextFilter(Stream output)
         {
-            // 64K is optimal buffer size per https://technet.microsoft.com/en-us/library/cc938632.aspx
-            const int BufferSize = 64 * 1024;
-
             Debug.Assert(output != null, "output parameter is null");
             Debug.Assert(output.CanRead, "output.CanRead parameter equals false");
 

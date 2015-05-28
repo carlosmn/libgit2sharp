@@ -11,6 +11,85 @@ using LibGit2Sharp.Core;
 
 namespace LibGit2Sharp
 {
+    class WriteStream : Stream {
+        readonly GitWriteStream nextStream;
+        readonly IntPtr nextPtr;
+
+        public WriteStream(GitWriteStream nextStream, IntPtr nextPtr)
+        {
+            this.nextStream = nextStream;
+            this.nextPtr    = nextPtr;
+        }
+
+        public override bool CanWrite
+        {
+            get {
+                return true;
+            }
+        }
+
+        public override bool CanRead
+        {
+            get {
+                return false;
+            }
+        }
+
+        public override bool CanSeek
+        {
+            get {
+                return false;
+            }
+        }
+
+        public override long Position {
+            get {
+                throw new NotImplementedException();
+            }
+            set {
+                throw new InvalidOperationException();
+            }
+        }
+
+        public override long Length {
+            get {
+                throw new InvalidOperationException();
+            }
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override void SetLength(long value)
+        {
+            throw new InvalidOperationException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            throw new InvalidOperationException();
+        }
+
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            throw new InvalidOperationException();
+        }
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            unsafe {
+                fixed (byte *bufferPtr = &buffer[offset]) {
+                    if (nextStream.write(nextPtr, (IntPtr) bufferPtr, (UIntPtr) count) < 0)
+                    {
+                        // FIXME: should we raise the exception from whatever is set as an error from the callee?
+                        throw new LibGit2SharpException("failed to write to next buffer");
+                    }
+                }
+            }
+        }
+    }
+
     /// <summary>
     /// A filter is a way to execute code against a file as it moves to and from the git
     /// repository and into the working directory. 
@@ -55,6 +134,7 @@ namespace LibGit2Sharp
         private IntPtr thisPtr;
         private IntPtr nextPtr;
         private FilterSource filterSource;
+        private Stream output;
 
         /// <summary>
         /// The name that this filter was registered with
@@ -232,6 +312,7 @@ namespace LibGit2Sharp
                 nextStream = new GitWriteStream();
                 Marshal.PtrToStructure(nextPtr, nextStream);
                 filterSource = FilterSource.FromNativePtr(filterSourcePtr);
+                output = new WriteStream(nextStream, nextPtr);
             }
             catch (Exception exception)
             {
@@ -262,36 +343,7 @@ namespace LibGit2Sharp
                 Ensure.ArgumentNotZeroIntPtr(stream, "stream");
                 Ensure.ArgumentIsExpectedIntPtr(stream, thisPtr, "stream");
 
-                string tempFileName = Path.GetTempFileName();
-                // setup a server/client directional pipe to allow blocking reads and writes while minmizing memory consumption
-                // AnonymousPipe*Stream operate like stdout->stdin: block as long as the stream is open or until read buffer is filled
-                using (AnonymousPipeServerStream output = new AnonymousPipeServerStream(PipeDirection.Out, HandleInheritability.None, BufferSize))
-                using (AnonymousPipeClientStream reader = new AnonymousPipeClientStream(PipeDirection.In, output.ClientSafePipeHandle))
-                {
-                    Task.Factory.StartNew(() =>
-                    {
-                        try
-                        {
-                            Complete(filterSource.Path, filterSource.Root, output);
-                        }
-                        catch (Exception exception)
-                        {
-                            Log.Write(LogLevel.Error, "Filter.StreamCloseCallback exception");
-                            Log.Write(LogLevel.Error, exception.ToString());
-                            Proxy.giterr_set_str(GitErrorCategory.Filter, exception);
-                            result = (int)GitErrorCode.Error;
-                        }
-                        finally
-                        {
-                            // close the server pipe as soon as it done to unblock empty reads
-                            output.Close();
-                        }
-                    });
-
-                    result = WriteToNextFilter(reader);
-                }
-                // clean up after outselves
-                File.Delete(tempFileName);
+                Complete(filterSource.Path, filterSource.Root, output);
             }
             catch (Exception exception)
             {
@@ -333,62 +385,21 @@ namespace LibGit2Sharp
                 Ensure.ArgumentIsExpectedIntPtr(stream, thisPtr, "stream");
 
                 using (UnmanagedMemoryStream input = new UnmanagedMemoryStream((byte*)buffer.ToPointer(), (long)len))
-                // setup a server/client directional pipe to allow blocking reads and writes while minmizing memory consumption
-                // AnonymousPipe*Stream operate like stdout->stdin: block as long as the stream is open or until read buffer is filled
-                using (AnonymousPipeServerStream output = new AnonymousPipeServerStream(PipeDirection.Out, HandleInheritability.None, BufferSize))
-                using (AnonymousPipeClientStream reader = new AnonymousPipeClientStream(PipeDirection.In, output.ClientSafePipeHandle))
                 {
                     switch (filterSource.SourceMode)
                     {
                         case FilterMode.Clean:
-                            Task.Factory.StartNew(() =>
-                            {
-                                try
-                                {
-                                    Clean(filterSource.Path, filterSource.Root, input, output);
-                                }
-                                catch (Exception exception)
-                                {
-                                    Log.Write(LogLevel.Error, "Filter.StreamWriteCallback exception");
-                                    Log.Write(LogLevel.Error, exception.ToString());
-                                    Proxy.giterr_set_str(GitErrorCategory.Filter, exception);
-                                    result = (int)GitErrorCode.Error;
-                                }
-                                finally
-                                {
-                                    // close the server pipe as soon as it done to unblock empty reads
-                                    output.Close();
-                                }
-                            });
+                            Clean(filterSource.Path, filterSource.Root, input, output);
                             break;
 
                         case FilterMode.Smudge:
-                            Task.Factory.StartNew(() =>
-                            {
-                                try
-                                {
-                                    Smudge(filterSource.Path, filterSource.Root, input, output);
-                                }
-                                catch (Exception exception)
-                                {
-                                    Log.Write(LogLevel.Error, "Filter.StreamWriteCallback exception");
-                                    Log.Write(LogLevel.Error, exception.ToString());
-                                    Proxy.giterr_set_str(GitErrorCategory.Filter, exception);
-                                    result = (int)GitErrorCode.Error;
-                                }
-                                finally
-                                {
-                                    // close the server pipe as soon as it done to unblock empty reads
-                                    output.Close();
-                                }
-                            });
+                            Smudge(filterSource.Path, filterSource.Root, input, output);
                             break;
+
                         default:
                             Proxy.giterr_set_str(GitErrorCategory.Filter, "Unexpected filter mode.");
                             return (int)GitErrorCode.Ambiguous;
                     }
-
-                    result = WriteToNextFilter(reader);
                 }
             }
             catch (Exception exception)
@@ -397,35 +408,6 @@ namespace LibGit2Sharp
                 Log.Write(LogLevel.Error, exception.ToString());
                 Proxy.giterr_set_str(GitErrorCategory.Filter, exception);
                 result = (int)GitErrorCode.Error;
-            }
-
-            return result;
-        }
-
-        private unsafe int WriteToNextFilter(Stream output)
-        {
-            Debug.Assert(output != null, "output parameter is null");
-            Debug.Assert(output.CanRead, "output.CanRead parameter equals false");
-
-            int result = 0;
-            byte[] bytes = new byte[BufferSize];
-            IntPtr bytesPtr = Marshal.AllocHGlobal(BufferSize);
-            try
-            {
-                int read = 0;
-                while ((read = output.Read(bytes, 0, bytes.Length)) > 0)
-                {
-                    Marshal.Copy(bytes, 0, bytesPtr, read);
-                    if ((result = nextStream.write(nextPtr, bytesPtr, (UIntPtr)read)) != (int)GitErrorCode.Ok)
-                    {
-                        Proxy.giterr_set_str(GitErrorCategory.Filter, "Filter write to next stream failed");
-                        break;
-                    }
-                }
-            }
-            finally
-            {
-                Marshal.FreeHGlobal(bytesPtr);
             }
 
             return result;

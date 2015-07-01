@@ -90,6 +90,11 @@ namespace LibGit2Sharp
         /// </summary>
         private readonly CredentialsHandler CredentialsProvider;
 
+        /// <summary>
+        /// Callback to perform validation on the certificate
+        /// </summary>
+        private readonly CertificateHandler CertificateCheck;
+
         internal GitRemoteCallbacks GenerateCallbacks()
         {
             var callbacks = new GitRemoteCallbacks { version = 1 };
@@ -112,6 +117,11 @@ namespace LibGit2Sharp
             if (CredentialsProvider != null)
             {
                 callbacks.acquire_credentials = GitCredentialHandler;
+            }
+
+            if (CertificateCheck != null)
+            {
+                callbacks.certificate_check = GitCertificateCheck;
             }
 
             if (DownloadTransferProgress != null)

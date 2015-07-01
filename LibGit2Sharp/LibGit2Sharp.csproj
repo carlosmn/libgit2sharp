@@ -23,7 +23,6 @@
     <DefineConstants>TRACE;DEBUG;NET40</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
     <DocumentationFile>bin\Debug\LibGit2Sharp.xml</DocumentationFile>
@@ -36,7 +35,6 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <DocumentationFile>bin\Release\LibGit2Sharp.xml</DocumentationFile>
   </PropertyGroup>
   <ItemGroup>
@@ -371,6 +369,11 @@
     <Compile Include="StashApplyOptions.cs" />
     <Compile Include="StashApplyStatus.cs" />
     <Compile Include="Core\GitStashApplyOpts.cs" />
+    <Compile Include="Core\GitCertificateType.cs" />
+    <Compile Include="Core\GitCertificate.cs" />
+    <Compile Include="Core\GitCertificateX509.cs" />
+    <Compile Include="Certificate.cs" />
+    <Compile Include="CertificateX509.cs" />
   </ItemGroup>
   <ItemGroup>
     <CodeAnalysisDictionary Include="CustomDictionary.xml" />

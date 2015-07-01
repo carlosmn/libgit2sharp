@@ -162,14 +162,14 @@ namespace LibGit2Sharp.Tests
         [InlineData("new_tracked_file.txt", FileStatus.NewInIndex, new[] { "README", "new_tracked_file.txt", "modified_staged_file.txt", "modified_unstaged_file.txt", "new_untracked_file.txt" })]
         [InlineData("modified_staged_file.txt", FileStatus.ModifiedInIndex, new[] { "README", "new_tracked_file.txt", "modified_staged_file.txt", "modified_unstaged_file.txt", "new_untracked_file.txt" })]
         [InlineData("modified_unstaged_file.txt", FileStatus.ModifiedInWorkdir, new[] { "README", "new_tracked_file.txt", "modified_staged_file.txt", "modified_unstaged_file.txt", "new_untracked_file.txt" })]
-        public void MovingOverAnExistingFileThrows(string sourcePath, FileStatus sourceStatus, IEnumerable<string> destPaths)
+        public void MovingOverAnExistingFileThrows(string sourcePath, FileStatus sourceStatus, string[] destPaths)
         {
             InvalidMoveUseCases(sourcePath, sourceStatus, destPaths);
         }
 
         [Theory]
         [InlineData("new_untracked_file.txt", FileStatus.NewInWorkdir, new[] { "README", "new_tracked_file.txt", "modified_staged_file.txt", "modified_unstaged_file.txt", "new_untracked_file.txt", "deleted_unstaged_file.txt", "deleted_staged_file.txt", "i_dont_exist.txt" })]
-        public void MovingAFileWichIsNotUnderSourceControlThrows(string sourcePath, FileStatus sourceStatus, IEnumerable<string> destPaths)
+        public void MovingAFileWichIsNotUnderSourceControlThrows(string sourcePath, FileStatus sourceStatus, string[] destPaths)
         {
             InvalidMoveUseCases(sourcePath, sourceStatus, destPaths);
         }
@@ -178,7 +178,7 @@ namespace LibGit2Sharp.Tests
         [InlineData("deleted_unstaged_file.txt", FileStatus.DeletedFromWorkdir, new[] { "README", "new_tracked_file.txt", "modified_staged_file.txt", "modified_unstaged_file.txt", "new_untracked_file.txt", "deleted_unstaged_file.txt", "deleted_staged_file.txt", "i_dont_exist.txt" })]
         [InlineData("deleted_staged_file.txt", FileStatus.DeletedFromIndex, new[] { "README", "new_tracked_file.txt", "modified_staged_file.txt", "modified_unstaged_file.txt", "new_untracked_file.txt", "deleted_unstaged_file.txt", "deleted_staged_file.txt", "i_dont_exist.txt" })]
         [InlineData("i_dont_exist.txt", FileStatus.Nonexistent, new[] { "README", "new_tracked_file.txt", "modified_staged_file.txt", "modified_unstaged_file.txt", "new_untracked_file.txt", "deleted_unstaged_file.txt", "deleted_staged_file.txt", "i_dont_exist.txt" })]
-        public void MovingAFileNotInTheWorkingDirectoryThrows(string sourcePath, FileStatus sourceStatus, IEnumerable<string> destPaths)
+        public void MovingAFileNotInTheWorkingDirectoryThrows(string sourcePath, FileStatus sourceStatus, string[] destPaths)
         {
             InvalidMoveUseCases(sourcePath, sourceStatus, destPaths);
         }

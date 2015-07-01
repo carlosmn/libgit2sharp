@@ -382,7 +382,7 @@ namespace LibGit2Sharp.Tests
             }
         }
 
-        [Theory, PropertyData("ConfigAccessors")]
+        [Theory, MemberData("ConfigAccessors")]
         public void CanAccessConfigurationWithoutARepository(Func<string, string> localConfigurationPathProvider)
         {
             var path = SandboxStandardTestRepoGitDir();

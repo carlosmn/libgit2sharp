@@ -374,6 +374,10 @@
     <Compile Include="Core\GitCertificateX509.cs" />
     <Compile Include="Certificate.cs" />
     <Compile Include="CertificateX509.cs" />
+    <Compile Include="CertificateSshMD5.cs" />
+    <Compile Include="Core\GitCertificateSsh.cs" />
+    <Compile Include="Core\GitCertificateSshType.cs" />
+    <Compile Include="CertificateSshSHA1.cs" />
   </ItemGroup>
   <ItemGroup>
     <CodeAnalysisDictionary Include="CustomDictionary.xml" />

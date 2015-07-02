@@ -294,11 +294,26 @@ namespace LibGit2Sharp
             if (baseCert.type == GitCertificateType.X509) {
                 cert = new CertificateX509(certPtr.MarshalAs<GitCertificateX509>());
             }
+            else
+            {
+                GitCertificateSsh sshCert = certPtr.MarshalAs<GitCertificateSsh>();
+                if (sshCert.type == GitCertificateSshType.MD5)
+                {
+                    cert = new CertificateSshMD5(sshCert);
+                }
+                else
+                {
+                    cert = new CertificateSshSHA1(sshCert);
+                }
+            }
 
             bool result = false;
-            try {
+            try
+            {
                 result = CertificateCheck(cert, valid != 0, hostname);
-            } catch (Exception exception) {
+            }
+            catch (Exception exception)
+            {
                 Proxy.giterr_set_str(GitErrorCategory.Callback, exception);
             }
 

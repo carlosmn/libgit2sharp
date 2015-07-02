@@ -40,7 +40,7 @@ namespace LibGit2Sharp.Handlers
     /// <param name="host">The hostname which we tried to connect to</param>
     /// <param name="valid">Whether libgit2 thinks this certificate is valid</param>
     /// <returns>True to continue, false to cancel</returns>
-    public delegate bool CertificateHandler(Certificate certificate, bool valid, string host);
+    public delegate bool CertificateCheckHandler(Certificate certificate, bool valid, string host);
 
     /// <summary>
     /// Delegate definition for transfer progress callback.

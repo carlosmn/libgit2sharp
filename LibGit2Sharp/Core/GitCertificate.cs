@@ -1,10 +1,10 @@
 ﻿using System;
 using System.Runtime.InteropServices;
 
-namespace LibGit2Sharp
+namespace LibGit2Sharp.Core
 {
     [StructLayout(LayoutKind.Sequential)]
-    public struct GitCertificate
+    internal struct GitCertificate
     {
         public GitCertificateType type;
     }

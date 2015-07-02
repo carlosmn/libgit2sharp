@@ -7,7 +7,7 @@ namespace LibGit2Sharp
     /// </summary>
     public abstract class Certificate
     {
-        public Certificate()
+        internal Certificate()
         {
         }
     }

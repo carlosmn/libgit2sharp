@@ -1,5 +1,6 @@
 ﻿using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
+using LibGit2Sharp.Core;
 
 namespace LibGit2Sharp
 {
@@ -8,6 +9,9 @@ namespace LibGit2Sharp
     /// </summary>
     public class CertificateX509 : Certificate
     {
+        /// <summary>
+        /// The certificate.
+        /// </summary>
         public X509Certificate Certificate { get; private set; }
 
         internal CertificateX509(GitCertificateX509 cert)

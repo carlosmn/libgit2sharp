@@ -27,6 +27,7 @@ namespace LibGit2Sharp
             PushTransferProgress = pushOptions.OnPushTransferProgress;
             PackBuilderProgress = pushOptions.OnPackBuilderProgress;
             CredentialsProvider = pushOptions.CredentialsProvider;
+            CertificateCheck = pushOptions.CertificateCheck;
             PushStatusError = pushOptions.OnPushStatusError;
             PrePushCallback = pushOptions.OnNegotiationCompletedBeforePush;
         }
@@ -42,6 +43,7 @@ namespace LibGit2Sharp
             DownloadTransferProgress = fetchOptions.OnTransferProgress;
             UpdateTips = fetchOptions.OnUpdateTips;
             CredentialsProvider = fetchOptions.CredentialsProvider;
+            CertificateCheck = fetchOptions.CertificateCheck;
         }
 
         #region Delegates
@@ -93,7 +95,7 @@ namespace LibGit2Sharp
         /// <summary>
         /// Callback to perform validation on the certificate
         /// </summary>
-        private readonly CertificateHandler CertificateCheck;
+        private readonly CertificateCheckHandler CertificateCheck;
 
         internal GitRemoteCallbacks GenerateCallbacks()
         {
@@ -281,6 +283,26 @@ namespace LibGit2Sharp
             var cred = CredentialsProvider(url, username, types);
 
             return cred.GitCredentialHandler(out ptr);
+        }
+
+        private int GitCertificateCheck(IntPtr certPtr, int valid, IntPtr cHostname, IntPtr payload)
+        {
+            string hostname = LaxUtf8Marshaler.FromNative(cHostname);
+            GitCertificate baseCert = certPtr.MarshalAs<GitCertificate>();
+            Certificate cert = null;
+
+            if (baseCert.type == GitCertificateType.X509) {
+                cert = new CertificateX509(certPtr.MarshalAs<GitCertificateX509>());
+            }
+
+            bool result = false;
+            try {
+                result = CertificateCheck(cert, valid != 0, hostname);
+            } catch (Exception exception) {
+                Proxy.giterr_set_str(GitErrorCategory.Callback, exception);
+            }
+
+            return Proxy.ConvertResultToCancelFlag(result);
         }
 
         private int GitPushNegotiationHandler(IntPtr updates, UIntPtr len, IntPtr payload)

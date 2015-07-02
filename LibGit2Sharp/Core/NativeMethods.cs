@@ -1655,9 +1655,7 @@ namespace LibGit2Sharp.Core
 
         internal delegate int git_transport_cb(out IntPtr transport, IntPtr remote, IntPtr payload);
 
-        internal delegate int git_transport_certificate_check_cb(ref GitCertificate cert, int valid,
-            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalCookie = UniqueId.UniqueIdentifier, MarshalTypeRef = typeof(StrictUtf8Marshaler))] string host,
-            IntPtr payload);
+        internal delegate int git_transport_certificate_check_cb(IntPtr cert, int valid, IntPtr hostname, IntPtr payload);
 
         [DllImport(libgit2)]
         internal static extern int git_transport_register(

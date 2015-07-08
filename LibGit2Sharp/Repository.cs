@@ -1465,6 +1465,34 @@ namespace LibGit2Sharp
             }
         }
 
+        private MergeAnalysisResult AnalyzeMerge(GitAnnotatedCommitHandle[] annotatedCommits)
+        {
+            GitMergeAnalysis mergeAnalysis;
+            GitMergePreference mergePreference;
+
+            Proxy.git_merge_analysis(Handle, annotatedCommits, out mergeAnalysis, out mergePreference);
+            return new MergeAnalysisResult(mergeAnalysis, mergePreference);
+        }
+
+        public MergeAnalysisResult AnalyzeMerge(Commit[] commits)
+        {
+            GitAnnotatedCommitHandle[] annotatedCommitHandles = commits.Select(commit =>
+                Proxy.git_annotated_commit_lookup(Handle, commit.Id.Oid)).ToArray();
+
+            try
+            {
+                return AnalyzeMerge(annotatedCommitHandles);
+            }
+            finally
+            {
+                foreach (var handle in annotatedCommitHandles)
+                {
+                    handle.Dispose();
+                }
+            }
+
+        }
+
         /// <summary>
         /// Internal implementation of merge.
         /// </summary>

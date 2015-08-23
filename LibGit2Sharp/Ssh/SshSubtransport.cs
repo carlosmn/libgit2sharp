@@ -8,7 +8,7 @@ namespace LibGit2Sharp.Ssh
     class AuthenticationState
     {
         public List<Type> AuthenticationTypes { get; set; }
-        public Credentials Credentials { get; set; }
+        public Credentials Credentials;
     }
 
     class AcquirerPasswordAuthenticationMethod : AuthenticationMethodBase
@@ -90,6 +90,7 @@ namespace LibGit2Sharp.Ssh
         protected override SmartSubtransportStream Action(String url, GitSmartSubtransportAction action)
         {
             var uri = new Uri(url);
+            ConnectionInfo = extractConnectionInfo(url);
 
             throw new NotImplementedException();
         }
@@ -101,22 +102,38 @@ namespace LibGit2Sharp.Ssh
         SshClient client;
         SshCommand command;
         string path;
+        string commandName;
 
-        SshSubtransportStream(SshSubtransport parent, string repoPath)
+        SshSubtransportStream(SshSubtransport parent, string repoPath, string command)
             : base(parent)
         {
             client = new SshClient(parent.ConnectionInfo);
             path  = repoPath;
+            commandName = command;
+        }
+
+        void SendCommand()
+        {
+            if (!client.IsConnected)
+            {
+                client.Connect();
+            }
+
         }
 
         public override int Write(Stream dataStream, long length)
         {
-            throw new NotImplementedException();
+            throw new NotImplementedException("write");
         }
 
         public override int Read(Stream dataStream, long length, out long bytesRead)
         {
-            throw new NotImplementedException();
+            if (command == null)
+            {
+                SendCommand();
+            }
+
+            throw new NotImplementedException("read");
         }
     }
 }

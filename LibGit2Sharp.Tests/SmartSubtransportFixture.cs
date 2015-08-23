@@ -4,7 +4,7 @@ using System.IO;
 using System.Net;
 using System.Net.Security;
 using LibGit2Sharp.Tests.TestHelpers;
-using LibGit2Sharp.Core;
+using LibGit2Sharp.Ssh;
 using Xunit;
 using Xunit.Extensions;
 
@@ -128,6 +128,53 @@ namespace LibGit2Sharp.Tests
                 ServicePointManager.ServerCertificateValidationCallback -= certificateValidationCallback;
             }
         }
+
+        [Theory]
+        [InlineData("ssh", "ssh://carlos@localhost/git/geef", "carlos", "crimson")]
+        public void CanUseSsh(string scheme, string url, string user, string pass)
+        {
+            string remoteName = "testRemote";
+
+            var scd = BuildSelfCleaningDirectory();
+            var repoPath = Repository.Init(scd.RootedDirectoryPath);
+
+            SmartSubtransportRegistration<SshSubtransport> registration = null;
+
+            try
+            {
+                registration = GlobalSettings.RegisterSmartSubtransport<SshSubtransport>(scheme);
+                Assert.NotNull(registration);
+
+                using (var repo = new Repository(scd.DirectoryPath))
+                {
+                    Remote remote = repo.Network.Remotes.Add(remoteName, url);
+
+                    // Set up structures for the expected results
+                    // and verifying the RemoteUpdateTips callback.
+                    TestRemoteInfo expectedResults = TestRemoteInfo.TestRemoteInstance;
+                    ExpectedFetchState expectedFetchState = new ExpectedFetchState(remoteName);
+
+                    // Add expected branch objects
+                    foreach (KeyValuePair<string, ObjectId> kvp in expectedResults.BranchTips)
+                    {
+                        expectedFetchState.AddExpectedBranch(kvp.Key, ObjectId.Zero, kvp.Value);
+                    }
+
+                    // Perform the actual fetch
+                    repo.Network.Fetch(remote, new FetchOptions { OnUpdateTips = expectedFetchState.RemoteUpdateTipsHandler, TagFetchMode = TagFetchMode.Auto,
+                        CredentialsProvider = (_user, _valid, _hostname) => new UsernamePasswordCredentials() { Username = user, Password = pass },
+                    });
+
+                    // Verify the expected
+                    expectedFetchState.CheckUpdatedReferences(repo);
+                }
+            }
+            finally
+            {
+                GlobalSettings.UnregisterSmartSubtransport(registration);
+            }
+        }
+
 
         [Fact]
         public void CannotReregisterScheme()

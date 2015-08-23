@@ -383,7 +383,8 @@
     <Compile Include="CertificateSsh.cs" />
     <Compile Include="Core\GitCredential.cs" />
     <Compile Include="Core\GitCredentialUserpass.cs" />
-    <Compile Include="SshSubtransport.cs" />
+    <Compile Include="Ssh\SshSubtransport.cs" />
+    <Compile Include="Ssh\AuthenticationMethodBase.cs" />
   </ItemGroup>
   <ItemGroup>
     <CodeAnalysisDictionary Include="CustomDictionary.xml" />
@@ -415,4 +416,7 @@
   <Target Name="AfterBuild">
   </Target>
   -->
+  <ItemGroup>
+    <Folder Include="Ssh\" />
+  </ItemGroup>
 </Project>

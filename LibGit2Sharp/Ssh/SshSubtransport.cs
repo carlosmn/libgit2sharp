@@ -3,14 +3,15 @@ using System.Collections.Generic;
 using Renci.SshNet;
 using System.IO;
 
-namespace LibGit2Sharp
+namespace LibGit2Sharp.Ssh
 {
     class AuthenticationState
     {
         public List<Type> AuthenticationTypes { get; set; }
+        public Credentials Credentials { get; set; }
     }
 
-    class AcquirerPasswordAuthenticationMethod : AuthenticationMethod
+    class AcquirerPasswordAuthenticationMethod : AuthenticationMethodBase
     {
         public override string Name {
             get {
@@ -18,43 +19,21 @@ namespace LibGit2Sharp
             }
         }
 
-        readonly SshSubtransport subtransport;
-
         AcquirerPasswordAuthenticationMethod(SshSubtransport subtransport, string username)
-            : base(username)
+            : base(subtransport, username)
         {
-            this.subtransport = subtransport;
         }
 
         public override AuthenticationResult Authenticate(Session session)
         {
-            // Ask the server for what authentication methods it actually allows
-            // TODO: this bit should go into a common function for all
-            if (subtransport.AuthState.AuthenticationTypes == null)
-            {
-                using (var method = new NoneAuthenticationMethod(Username))
-                {
-                    method.Authenticate(session);
-                    foreach (var allowed in method.AllowedAuthentications)
-                    {
-                        switch (allowed)
-                        {
-                            case "password":
-                                subtransport.AuthState.AuthenticationTypes.Add(typeof(UsernamePasswordCredentials));
-                                break;
-                        }
-                    }
-                }
-            }
+            QueryAuthentication(session);
 
-            Credentials cred;
-            int res = subtransport.AcquireCredentials(out cred, Username, subtransport.AuthState.AuthenticationTypes.ToArray());
-            if (res != 0)
+            // If we don't have credentials which match what we support, let the next one try
+            UsernamePasswordCredentials creds = subtransport.AuthState.Credentials as UsernamePasswordCredentials;
+            if (creds == null)
             {
-                throw new NotImplementedException("dunno what to do for errors");
+                return AuthenticationResult.Failure;
             }
-
-            UsernamePasswordCredentials creds = (UsernamePasswordCredentials)cred;
 
             using (var method = new PasswordAuthenticationMethod(creds.Username, creds.Password))
             {

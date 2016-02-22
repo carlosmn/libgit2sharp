@@ -55,15 +55,15 @@ namespace LibGit2Sharp.Core
     [StructLayout(LayoutKind.Sequential)]
     internal class GitBlameHunk
     {
-        public ushort LinesInHunk;
+        public UIntPtr LinesInHunk;
 
         public GitOid FinalCommitId;
-        public ushort FinalStartLineNumber;
+        public UIntPtr FinalStartLineNumber;
         public IntPtr FinalSignature;
 
         public GitOid OrigCommitId;
         public IntPtr OrigPath;
-        public ushort OrigStartLineNumber;
+        public UIntPtr OrigStartLineNumber;
         public IntPtr OrigSignature;
 
         public byte Boundary;
